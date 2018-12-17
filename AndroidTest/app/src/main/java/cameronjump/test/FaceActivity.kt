@@ -17,10 +17,8 @@ import cameronjump.test.R.xml.haarcascade_frontalface_alt
 import kotlinx.android.synthetic.main.activity_face.*
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.OpenCVLoader
-import org.opencv.core.Core
+import org.opencv.core.*
 import org.opencv.core.Core.rotate
-import org.opencv.core.Mat
-import org.opencv.core.MatOfRect
 import org.opencv.imgproc.Imgproc
 import org.opencv.objdetect.CascadeClassifier
 import java.io.File
@@ -88,14 +86,23 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
     override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
         var mRgba = inputFrame.rgba()
         var mRgbaT = Mat()
+        var mRgbaG = Mat()
         Core.transpose(mRgba,mRgbaT)
         Core.flip(mRgbaT, mRgbaT, -1)
         Imgproc.resize(mRgbaT, mRgbaT, mRgba.size())
 
         var faces = MatOfRect()
 
-        mCascadeClassifier.detectMultiScale(mRgbaT, faces)
-        
+        Imgproc.cvtColor(mRgbaT, mRgbaG, Imgproc.COLOR_RGB2GRAY)
+        mCascadeClassifier.detectMultiScale(mRgbaG, faces)
+        Log.d(TAG,faces.toString())
+
+        val facesArray = faces.toArray()
+        for (face: Rect in facesArray) {
+            Imgproc.rectangle(mRgbaT, face.tl(), face.br(), Scalar(0.0, 0.0, 255.0))
+        }
+
+
         return mRgbaT
     }
 
