@@ -3,22 +3,14 @@ package cameronjump.test
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.media.ExifInterface
-import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
-import android.support.v4.app.FragmentActivity
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.SurfaceView
-import cameronjump.test.R.xml.haarcascade_frontalface_alt
 import kotlinx.android.synthetic.main.activity_face.*
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
-import org.opencv.core.Core.rotate
 import org.opencv.imgproc.Imgproc
 import org.opencv.objdetect.CascadeClassifier
 import java.io.File
@@ -31,8 +23,8 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
     private val TAG = "FaceActivityDebug"
     private val REQUEST_IMAGE_CAPTURE = 200
     private lateinit var mOpenCvCameraView: CameraBridgeViewBase
-    private lateinit var mCascadeClassifier: CascadeClassifier
-    //private val mClassifierName = haarcascade_frontalface_alt
+    private lateinit var faceDetector: CascadeClassifier
+    private lateinit var eyeDetector: CascadeClassifier
     private val init = initialization()
 
     class initialization {
@@ -52,12 +44,11 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
         mOpenCvCameraView.setCvCameraViewListener(this)
         mOpenCvCameraView.setCameraIndex(1)
 
-        val cascadeDir = getDir("xml", Context.MODE_PRIVATE)
-        var mCascadeFile = File(cascadeDir,"haarcascade_frontalface_alt")
-        mCascadeClassifier = CascadeClassifier(mCascadeFile.absolutePath)
+        faceDetector = CascadeClassifier()
+        loadClassifier(faceDetector, R.raw.haarcascade_frontalface_alt, "haarcascade_frontalface_alt.xml")
 
-
-        loadClassifier()
+        eyeDetector = CascadeClassifier()
+        loadClassifier(eyeDetector, R.raw.haarcascade_eye, "haarcascade_eye.xml")
 
     }
 
@@ -92,14 +83,20 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
         Imgproc.resize(mRgbaT, mRgbaT, mRgba.size())
 
         var faces = MatOfRect()
+        val eyes = MatOfRect()
 
         Imgproc.cvtColor(mRgbaT, mRgbaG, Imgproc.COLOR_RGB2GRAY)
-        mCascadeClassifier.detectMultiScale(mRgbaG, faces)
-        Log.d(TAG,faces.toString())
+        faceDetector.detectMultiScale(mRgbaG, faces)
+        eyeDetector.detectMultiScale(mRgbaG, eyes)
 
         val facesArray = faces.toArray()
         for (face: Rect in facesArray) {
-            Imgproc.rectangle(mRgbaT, face.tl(), face.br(), Scalar(0.0, 0.0, 255.0))
+            Imgproc.rectangle(mRgbaT, face.tl(), face.br(), Scalar(0.0, 0.0, 255.0), 3)
+        }
+
+        val eyesArray = eyes.toArray()
+        for (eye: Rect in eyesArray) {
+            Imgproc.rectangle(mRgbaT, eye.tl(), eye.br(), Scalar(0.0, 255.0, 0.0), 3)
         }
 
 
@@ -116,12 +113,12 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
         }
     }
 
-    fun loadClassifier() {
+    fun loadClassifier(detector: CascadeClassifier, fileID: Int, fileName: String) {
         try {
             // load cascade file from application resources
-            val inputStream = resources.openRawResource(R.raw.haarcascade_frontalface_alt)
+            val inputStream = resources.openRawResource(fileID)
             val cascadeDir = getDir("cascade", Context.MODE_PRIVATE)
-            val mCascadeFile = File(cascadeDir, "haarcascade_frontalface_alt.xml")
+            val mCascadeFile = File(cascadeDir, fileName)
             val outputStream = FileOutputStream(mCascadeFile)
 
             val buffer = ByteArray(4096)
@@ -133,8 +130,8 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
             inputStream.close()
             outputStream.close()
 
-            mCascadeClassifier = CascadeClassifier(mCascadeFile.absolutePath)
-            if (mCascadeClassifier.empty()) {
+            detector.load(mCascadeFile.absolutePath)
+            if (detector.empty()) {
                 Log.d(TAG, "Failed to load cascade classifier")
             } else
                 Log.d(TAG, "Loaded cascade classifier from " + mCascadeFile.absolutePath)
