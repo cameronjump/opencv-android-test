@@ -3,11 +3,16 @@ package cameronjump.test
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.AsyncTask
 import android.os.Bundle
+import android.os.Handler
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.SurfaceView
 import kotlinx.android.synthetic.main.activity_face.*
+import kotlinx.coroutines.CoroutineScope
+import org.jetbrains.anko.doAsync
+import org.jetbrains.anko.uiThread
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
@@ -16,7 +21,7 @@ import org.opencv.objdetect.CascadeClassifier
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-
+import java.util.*
 
 class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -26,6 +31,10 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
     private lateinit var faceDetector: CascadeClassifier
     private lateinit var eyeDetector: CascadeClassifier
     private val init = initialization()
+
+    private lateinit var image: Mat
+    private lateinit var faces: MatOfRect
+    private lateinit var eyes: MatOfRect
 
     class initialization {
         companion object {
@@ -50,12 +59,16 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
         eyeDetector = CascadeClassifier()
         loadClassifier(eyeDetector, R.raw.haarcascade_eye, "haarcascade_eye.xml")
 
+        this.image = Mat()
+        this.faces = MatOfRect()
+        this.eyes = MatOfRect()
+
+        callAsynchronousTask()
     }
 
     public override fun onPause() {
         super.onPause()
-        if (mOpenCvCameraView != null)
-            mOpenCvCameraView.disableView()
+        mOpenCvCameraView.disableView()
     }
 
     public override fun onResume() {
@@ -65,8 +78,7 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
 
     public override fun onDestroy() {
         super.onDestroy()
-        if (mOpenCvCameraView != null)
-            mOpenCvCameraView.disableView()
+        mOpenCvCameraView.disableView()
     }
 
     override fun onCameraViewStarted(width: Int, height: Int) {
@@ -77,24 +89,23 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
     override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
         var mRgba = inputFrame.rgba()
         var mRgbaT = Mat()
-        var mRgbaG = Mat()
         Core.transpose(mRgba,mRgbaT)
         Core.flip(mRgbaT, mRgbaT, -1)
         Imgproc.resize(mRgbaT, mRgbaT, mRgba.size())
 
-        var faces = MatOfRect()
-        val eyes = MatOfRect()
+        this.image = mRgbaT
 
-        Imgproc.cvtColor(mRgbaT, mRgbaG, Imgproc.COLOR_RGB2GRAY)
-        faceDetector.detectMultiScale(mRgbaG, faces)
-        eyeDetector.detectMultiScale(mRgbaG, eyes)
+        //Imgproc.cvtColor(mRgbaT, mRgbaG, Imgproc.COLOR_RGB2GRAY)
+        //faceDetector.detectMultiScale(mRgbaG, faces)
+        //eyeDetector.detectMultiScale(mRgbaG, eyes)
 
-        val facesArray = faces.toArray()
+
+        val facesArray = this.faces.toArray()
         for (face: Rect in facesArray) {
             Imgproc.rectangle(mRgbaT, face.tl(), face.br(), Scalar(0.0, 0.0, 255.0), 3)
         }
 
-        val eyesArray = eyes.toArray()
+        val eyesArray = this.eyes.toArray()
         for (eye: Rect in eyesArray) {
             Imgproc.rectangle(mRgbaT, eye.tl(), eye.br(), Scalar(0.0, 255.0, 0.0), 3)
         }
@@ -103,14 +114,26 @@ class FaceActivity: AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListen
         return mRgbaT
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == Activity.RESULT_OK) {
-            //var bitmap = getCapturedImage(uri)
-            //bitmap = modifyImage(bitmap)
-            //face_image.setImageBitmap(bitmap)
-
-
+    fun callAsynchronousTask() {
+        val timer = Timer()
+        val doAsynchronousTask = object : TimerTask() {
+            override fun run() {
+                doAsync {
+                    //Execute all the lon running tasks here
+                    var tempImage = image
+                    Imgproc.cvtColor(tempImage, tempImage, Imgproc.COLOR_RGB2GRAY)
+                    var faces = MatOfRect()
+                    var eyes = MatOfRect()
+                    faceDetector.detectMultiScale(tempImage, faces)
+                    eyeDetector.detectMultiScale(tempImage, eyes)
+                    uiThread {
+                        this@FaceActivity.faces = faces
+                        this@FaceActivity.eyes = eyes
+                    }
+                }
+            }
         }
+        timer.schedule(doAsynchronousTask, 0, 100) //execute in every 50000 ms
     }
 
     fun loadClassifier(detector: CascadeClassifier, fileID: Int, fileName: String) {
